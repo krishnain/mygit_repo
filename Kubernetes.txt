@@ -1,0 +1,1599 @@
+================================================================================
+Kubernetes
+======================
+
+Menions: This is an individual node used in kubernetes
+Combination of these minions is called as Kubernetes cluster
+
+Master is the main machine which triggers the container orchestraion
+It distributes the work load to the Slaves
+
+Slaves are the nodes that accept the work load from the master
+and handle activites load balancing,autoscalling,high availability etc
+
+
+
+Kubernetes uses various of types of Object
+
+1 Pod: This is a layer of abstraction on top of a container.This is the samallest
+  object that kubernetes can work on.In the Pod we have a container.
+  The advantage of using a Pod is that kubectl commands will work on the Pod and the 
+  Pod communicates these instructions to the container.In this way we can use the
+  same  kubectl irresepective of which technology containers are in the Pod.
+
+
+
+2 Service: This is used for port mapping and network load balancing
+
+3 NameSpace: This is used for creating partitions in the cluster.Pods running
+ in a namespace cannot communicate with other pods running in other namespace
+
+4 Secrets: This is used for passing encrypted data to the Pods
+
+5 ReplicationController: This is used for managing multiple replicas of PODs
+and also perfroming saclling 
+
+6 ReplicaSet: This is similar to replicationcontroller but it is more advanced
+where features like selector can be implemented
+
+7 Deployment: This used for perfroming all activites that a Replicaset can do
+  it can also handle rolling update
+
+8 Volume: Used to preserve the data even when the pods are deleted
+
+9 Statefulsets: These are used to handle stateful application like data bases
+  where consistency in read write operations has to be maintained.
+
+
+==========================================================================================
+Kubernetes Architecture
+=============================
+Master Componentes
+=======================
+Container runtime: This can be docker or anyother container technology
+
+apiServer: Users interact with the apiServer using some clinet like ui,command line tool like kubelet.It is the apiServer which is the gateway to the cluster
+It works as a gatekeeper  for authentication and it validates if a specific
+user is having permissions to execute a specific command.Example if we want to
+deploy a pod or a deployment first apiServers validates if the user is authorised to perform that action and if so it passes to the next process
+ie the "Scheduler"
+
+Scheduler: This process accepts the instructions from apiServer after validation
+and starts an application on a sepcific node or set of nodes.It estimates
+how much amount of h/w is required for an application and then checks which
+slave have the necessary h/w resources and instructs the kubelet to deploy
+the application
+
+kubelet: This is the actual process that takes the orders from scheduler and
+deploy an application on a slave.This kubelet is present on both master and slave
+
+controller manager: This check if the desired state of the cluster is always
+maintained.If a pod dies it recreates that pod to maintain the desired state
+
+etcd: Here the cluster state is maintained in key value pairs.
+It maintains info about the slaves and the h/w resources available on
+the slaves and also the pods running on the slaves
+The scheduler and the control manager read the info from this etcd
+and schedule the pods and maintain the desired state
+
+===========================================================================
+Worker components
+=======================
+containerrun time: Docker or some other container technology
+
+kubelet: This process interacts with container run time and the node 
+and it start a pod with a container in it
+
+kubeproxy: This will take the request from services to pod
+It has the intellegence to forward a request to
+a near by pod.Eg If an application pod wants to communicate with a db pod
+then kubeproxy will take that request to the nearby pod 
+
+============================================================================
+
+Setup of Kubernetes
+===============================
+Free
+===========
+1 http://katakoda.com
+(or)
+2 http://playwithk8s.com
+
+
+===========================================================================
+Manual setup of Kubernetes
+=============================================
+Install, start and enable docker service
+
+yum install -y -q yum-utils device-mapper-persistent-data lvm2 > /dev/null 2>&1
+yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo > /dev/null 2>&1
+yum install -y -q docker-ce >/dev/null 2>&1
+
+
+systemctl start docker
+systemctl enable docker
+
+=====================================================================================
+Disable SELINUX
+
+setenforce 0
+sed -i --follow-symlinks 's/^SELINUX=enforcing/SELINUX=disabled/' /etc/sysconfig/selinux
+
+============================================================================================
+Disable SWAP
+
+sed -i '/swap/d' /etc/fstab
+swapoff -a
+
+===========================================================================================
+Update sysctl settings for Kubernetes networking
+
+cat >>/etc/sysctl.d/kubernetes.conf<<EOF
+net.bridge.bridge-nf-call-ip6tables = 1
+net.bridge.bridge-nf-call-iptables = 1
+EOF
+sysctl --system
+
+============================================================================================
+Add Kubernetes to yum repository
+
+cat >>/etc/yum.repos.d/kubernetes.repo<<EOF
+[kubernetes]
+name=Kubernetes
+baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64
+enabled=1
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg
+        https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+EOF
+
+======================================================================================
+Install Kubernetes
+yum install -y kubeadm kubelet kubectl
+
+==================================================================================
+Enable and start Kubernetes service
+
+systemctl start kubelet
+systemctl enable kubelet
+=====================================================================================
+Repeat the above steps on Master and slaves
+=======================================================================================
+
+On Master=============
+===========
+Initilise the Kubernetes cluster
+-----------------------------------------
+
+kubeadm init --apiserver-advertise-address=ip_of_master --pod-network-cidr=192.168.0.0/16
+
+=========================================================================================
+
+To be able to use kubectl command to connect and interact with the cluster, 
+the user needs kube config file.
+
+mkdir /home/centos/.kube
+cp /etc/kubernetes/admin.conf /home/centos/.kube/config
+chown -R centos:centos /home/centos/.kube
+
+========================================================================================
+Deploy calico network
+kubectl create -f https://docs.projectcalico.org/v3.9/manifests/calico.yaml
+
+========================================================================================
+For slaves to join the cluster
+kubeadm token create --print-join-command
+
+======================================================================================
+Check the pods of kube-system  are running
+
+kubectl get pods -n kube-system
+
+
+
+=========================================================================
+UseCase
+===========
+Create nginx as a pod and name it webserver
+kubectl run --image nginx webserver
+
+To see the list of pods running
+kubectl get pods
+
+To see more info about the pods like their ip and slave where they are running
+kubectl  get pods -o wide
+
+To delete the pod
+kubectl delete pods webserver
+
+============================================================================
+UseCase
+========= 
+Create mysql pod and name it mydb and go into its interactive terminal and create few tables
+
+kubectl run --image mysql:5 mydb --env MYSQL_ROOT_PASSWORD=intelliqit
+
+To check the pods
+kubectl get pods
+
+To go into the interactive terminal
+kubectl exec -it mydb -- bash
+
+To login into the db
+mysql -u root -p
+Password: intellqiit
+
+Create tables here
+
+=========================================================================
+Kuberentes Defintion files
+==============================
+Objects in Kubernetes cluster are deployed using these
+defintion files 
+They are created using yml and they generally these 4 top level 
+fields.
+
+apiVersion:
+kind:
+metadata:
+spec:
+
+apiVersion : This specifies the code library that has to be imported
+to create a particualr kind of Kubernetes object
+
+kind: Here we specify the type kubernetes object that we want to 
+create(Pod,ReplicaSet,Deployment,Service etc)
+
+metadata: Here we can give additional info about the Pod like
+the name of the Pod,some labels etc
+
+spec: This is where exact info about the object that is created is
+specified like containers info port mapping,no of replicas etc
+
+================================================================
+kind                     apiVersions
+===================================================
+Pod			 v1
+Service			 v1
+Secret			 v1
+Namespace		 v1
+ReplicationController    v1
+ReplicaSet  		 apps/v1
+Deployment	         apps/v1
+StatefuleSet             apps/v1
+
+
+==================================================================
+Create a pod defintion file to start nginx pod with a name webserver
+
+1 vim pod-defintion1.yml
+---
+apiVersion: v1
+kind: Pod
+metadata:
+ name: nginx-pod
+ labels:
+  type: proxy
+  author: intelliqit
+spec:
+ containers:
+  - name: webserver
+    image: nginx
+   
+...
+
+2 Create pod from the above file
+  kubectl apply -f pod-defintion1.yml
+
+3 To check the list of pods
+  kubectl get pods
+
+4 To delete the pods
+  kubectl delete -f pod-defintion1.yml
+
+========================================================================
+UseCase
+================
+Create a postgres-pod and give the labels as author=intelliqit
+and type=db,also pass the necessay environment variables
+
+1 vim pod-definition2.yml
+apiVersion: v1
+kind: Pod
+metadata:
+ name: postgres-pod
+ labels:
+  author: intelliqit
+  type: db
+spec:
+ containers:
+  - name: mydb
+    image: postgres
+    env:
+     - name: POSTGRES_PASSWORD
+       value: intelliqit
+     - name: POSTGRES_USER
+       value: myuser
+     - name: POSTGRES_DB
+       value: mydb
+...
+
+To create pods from the above file
+kubectl apply -f pod-defintion2.yml
+
+
+====================================================================
+UseCase
+============
+Create a jenkins-pod and also perfrom necessary port mapping
+
+vim pod-definition2.yml
+---
+apiVersion: v1
+kind: Pod
+metadata:
+ name: jenkins-pod
+ labels:
+  type: ci-cd
+  author: intelliqit
+spec:
+ containers:
+  - name: jenkins
+    image: jenkins/jenkins
+    ports:
+     - containerPort: 8080
+       hostPort: 8080
+...
+
+To create the pods from the above file
+kubectl apply -f pod-defintion3.yml
+
+To check if the jnekins pod is running
+kubectl get pods -o wide
+
+To accesss jenkins from browser
+kubectl get nodes -o wide
+Capture the external ip of the node where jenkins pod is running
+in browser
+externalip:8080
+==========================================================================
+UseCase
+================
+Create a pod defintion file to start httpd pod and also perform port mapping
+
+vim pod-defintion4.yml
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: httpd-pod
+  labels:
+    author: intelliqit
+    type: webserver
+spec:
+  containers:
+    - name: myhttpd
+      image: httpd
+      ports:
+        - containerPort: 80
+          hostPort: 8080
+...
+
+To create pods from the above file
+kubeclt apply -f pod-defintion4.yml
+
+=======================================================================
+Namespace
+=================
+
+Namespaces are used to create partitions in the Kubernetes cluster
+Pods runnign in different namespaces cannot communicate with
+each other
+
+To create Namespaces
+===========
+vim namespace.yml
+---
+apiVersion: v1
+  kind: Namespace
+  metadata:
+    name: test-ns
+...
+
+kubectl apply -f namespace.yaml 
+
+To see the list of namespace
+================================
+kubectl get namespace
+
+Create a pod in the above name space
+vim pod-defintion5.yml
+---
+apiVersion: v1
+kind: Pod
+metadata:
+ name: tomcat-pod
+ namespace: test-ns
+ labels:
+  author: intelliqit
+  type: appserver
+spec:
+ containers:
+  - name: mytomcat
+    image: tomee
+    ports:
+     - containerPort: 8080
+       hostPort: 8080
+...
+
+kubectl apply -f pod-defintion5.yml
+=======================================================================
+Volumes
+==================
+---
+apiVersion: v1
+kind: Pod
+metadata:
+ name: redis-pod
+ labels:
+  author: intelliqit
+spec:
+ containers:
+  - name: redis
+    image: redis
+    volumeMounts:
+     - name: redis-volume
+       mountPath: /data/redis
+ volumes:
+  - name: redis-volume
+    emptyDir: {}
+
+Create a pod from the above file
+kubectl create -f volumes.yml
+
+To check if the volume is mounted
+kubectl exec -it redis-pod -- bash
+
+Go to the redis folder and create some files
+cd redis
+cat > file
+Store some data in this file
+
+To kill the redis pod install procps
+apt-get update
+apt-get install -y procps
+
+Identify the process id of redis
+ps aux
+kill 1
+
+Check if the redis-pod is recreated
+kubectl get pods
+We will see the restart count changes for this pod
+
+If we go into this pods interactive terminal
+kubectl exec -it redis-pod -- bash
+
+We will see the data but not the s/w's (procps) we installed
+cd redis
+ls
+
+ps  This will not work
+
+
+
+======================================================================
+========================================================================
+ReplicationController
+=======================
+This is a high level Kubernets object that can be used for handling 
+multiple replicas of a Pod.Here we can perfrom Load Balancing
+and Scalling
+
+ReplicationController uses keys like "replicas,template" etc in the "spec" section
+In the template section we can give metadata related to the pod and also use
+another spec section where we can give containers information
+
+Create a replication controller for creating 3 replicas of httpd
+vim repilication-controller.yml
+---
+apiVersion: v1
+kind: ReplicationController
+metadata:
+ name: httpd-rc
+ labels:
+  author: intelliqit
+spec:
+ replicas: 3
+ template:
+  metadata:
+   name: httpd-pod
+   labels:
+    author: intelliqit
+  spec:
+   containers:
+    - name: myhttpd
+      image: httpd
+      ports:
+       - containerPort: 80
+         hostPort: 8080
+...
+
+To create the httpd replicas from the above file
+kubectl create -f replication-controller.yml
+
+To check if 3 pods are running an on whcih slaves they are running
+kubectl get pods -o wide
+
+To delete the replicas
+kubectl delete -f replication-controller.yml
+=========================================================================
+
+
+ReplicaSet
+===================
+This is also similar to ReplicationController but it is more
+advanced and it can also handle load balancing and scalling
+It has an additional field in spec section called as "selector"
+This selector uses a child element "matchLabels" where the
+it will search for Pod based on a specific label name and try to add
+them to the cluster
+
+Create a replicaset file to start 4 tomcat replicas  and then perform scalling
+vim replica-set.yml
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+ name: tomcat-rs
+ labels:
+  type: webserver
+  author: intelliqit
+spec:
+ replicas: 4
+ selector:
+  matchLabels:
+   type: webserver
+   
+ template:
+  metadata:
+   name: tomcat-pod
+   labels:
+    type: webserver
+  spec:
+   containers:
+    - name: mywebserver
+      image: tomcat
+      ports:
+       - containerPort: 8080
+         hostPort: 9090
+
+To create the pods from the above file
+kubectl create -f replica-set.yml
+
+Scalling can be done in 2 ways
+a) Update the file and later scale it
+
+b) Scale from the coomand prompt withbout updating the defintion file
+
+a) Update the file and later scale it
+  Open the replicas-set.yml file and increase the replicas count from 4 to 6
+  kubectl replace -f replicas-set.yml
+  Check if 6 pods of tomcat are running
+  kubectl get pods
+
+b) Scale from the coomand prompt withbout updating the defintion file
+   kubectl scale --replicas=2 -f replica-set.yml
+
+
+================================================================
+Deployment
+================
+
+This is also a high level Kubernetes object which can be used for
+scalling and load balancing and it can also perfrom rolling update
+
+Create a deployment file to run nginx:1.7.9 with 3 replicas
+
+
+vim deployment1.yml
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+ name: nginx-deployment
+ labels:
+  author: intelliqit
+  type: proxyserver
+spec:
+ replicas: 3
+ selector:
+  matchLabels:
+   type: proxyserver
+ template:
+  metadata:
+   name: nginx-pod
+   labels:
+    type: proxyserver
+  spec:
+   containers:
+    - name: nginx
+      image: nginx:1.7.9
+      ports:
+       - containerPort: 80
+         hostPort: 8888
+ 
+To create the deployment from the above file
+kubectl create -f deployment.yml
+
+To check if the deployment is running
+kubectl get deployment
+
+To see if all 3 pod of nginx are running
+kubectl get pod
+
+Check the version of nginx
+kubectl describe pods nginx-deployment | less
+
+===========================================================================
+Create a mysql deployment
+vim deployment2.yml
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-deployment
+  labels:
+    type: db
+    author: intelliqit
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      type: db
+  template:
+    metadata:
+      name: mysql-pod
+      labels:
+        type: db
+    spec:
+      containers:
+        - name: mydb
+          image: mysql
+          ports:
+            - containerPort: 3306
+              hostPort: 8080
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: intelliqit
+
+
+
+
+
+=========================================================================
+Service Object
+=====================
+
+This is used for network load balancing and port mapping
+It uses 3 ports
+1 target port:  Pod or container port
+2 port:   Service port
+3 hostPort:  Host machines port to make it accessable from external network
+
+Service objects are classified into 3 types
+1 clusterIP: This is the default type of service object used in
+  Kubernetes and it is used when we want the Pods in the cluster to
+  communicate with each other and not with extrnal networks
+
+2 nodePort: This is used if we want to access the pods from an extrnal
+  network and it also performs network load balancing ie even if a pod
+  is running on a specific salve we can access it from other slave in
+  the cluster
+
+3 LoadBalancer: This is similar to Nodeport and it is used for external 
+  connectivity of a Pod and also network load balancing and it also assigns
+  a public ip for all the slave combined together
+
+
+
+=============================================================================
+Use Case
+=================
+Create a service defintion file for port mapping an nginx pod
+
+vim pod-defintion1.yml
+---
+apiVersion: v1
+kind: Pod
+metadata:
+ name: nginx-pod
+ labels:
+  author: intellqit
+  type: proxy
+spec:
+ containers:
+  - name: appserver
+    image: nginx
+=========================================================
+vim service1.yml
+---
+apiVersion: v1
+kind: Service
+metadata:
+ name: nginx-service
+spec:
+ type: NodePort
+ ports:
+  - targetPort: 80
+    port: 80
+    nodePort: 30008
+ selector:
+  author: intellqit
+  type: proxy
+
+Create pods from the above pod definition file
+kubectl create -f pod-definition1.yml
+Create the service from the above service definition file
+kubectl create -f service.yml
+Now nginx can be accesed from any of the slave
+kubectl get nodes -o wide
+Take the external ip of any of the nodes:30008
+
+
+======================================================================================
+Create a service object of the type LoadBalancer for a tomcat pods
+vim servcie2.yml
+---
+apiVersion: v1
+kind: Service
+metadata:
+ name: tomcat-service
+spec:
+ type: LoadBalancer
+ ports:
+  - targetPort: 80
+    port: 80
+    
+ selector:
+  author: intellqit
+  type: appserver
+
+
+vim pod0defintion5.yml
+vim pod-definition2.yml
+---
+apiVersion: v1
+kind: Pod
+metadata:
+ name: tomcat-pod
+ labels:
+  type: appserver
+  author: intelliqit
+spec:
+ containers:
+  - name: tomcat
+    image: tomee
+    
+...
+
+================================================================================
+Create a service object of the type load balancer for postgres pod
+vim service3.yml
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+ name: postgres-service
+spec:
+ type: ClusterIp
+ ports:
+  - targetPort: 5432
+    port: 5432
+   
+ selector:
+  author: intellqit
+  type: db
+
+vim pod-defintion6.yml
+apiVersion: v1
+kind: Pod
+metadata:
+ name: mysql-pod
+ labels:
+  type: db
+  author: intelliqit
+spec:
+ containers:
+  - name: mydb
+    image: mysql
+    env:
+     name: MYSQL_ROOT_PASSWORD
+     value: intelliqit
+
+========================================================================================
+Kubernetes Project
+========================
+This is a python based application which is used for accepting a vote
+(voting app).This application accepts the vote and passes it to a
+temporary db created using redis.From here the data is passed to a
+worker application created using .net which anlysises the data and
+stores them permananatly in a database created using postgres
+From here the results can be seen on an application that is created 
+using nodejs and this is called as resulta-app
+
+To do this we will create 5 pod definition files
+and 4 service files,2 services of type cluster ip for redis and postgres 
+databases 2 services of type loadbalancer for python voting app and 
+nodejs result app
+
+Pod Definition Files
+================================
+vim voting-app-pod.yml
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: voting-app-pod
+  labels:
+    name: voting-app
+    author: intelliqit
+spec:
+  containers:
+    - name: voting-app
+      image: dockersamples/examplevotingapp_vote
+      ports:
+        - containerPort: 80
+...
+
+
+vim result-app-pod.yml
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: result-app-pod
+  labels:
+    name: result-app
+    author: intelliqit
+spec:
+  containers:
+    - name: result-app
+      image: dockersamples/examplevotingapp_result
+      ports:
+        - containerPort: 80
+...
+
+
+vim worker-app-pod.yml
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: worker-app-pod
+  labels:
+    name: worker-app
+    author: intelliqit
+spec:
+  containers:
+    - name: worker-app
+      image: dockersamples/examplevotingapp_worker
+...
+
+
+vim redis-pod.yml
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: redis-pod
+  labels:
+    name: redis
+    author: intelliqit
+spec:
+  containers:
+   - name: redis
+     image: redis
+     ports:
+       - containerPort: 6379
+...
+
+vim postgres-pod.yml
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: postgres-pod
+  labels:
+    name: postgres
+    author: intelliqit
+spec:
+  containers:
+    - name: postgres
+      image: postgres
+      ports:
+        - containerPort: 5432
+...
+
+
+============================================================================
+Service Defintion file
+===============================
+vim redis-service.yml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service
+  labels:
+    name: redis-service
+    author: intelliqit
+spec:
+  ports:
+    - port: 6379
+      targetPort: 6379
+  selector:
+    name: redis
+    
+...
+
+vim pod-service.yml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  labels:
+    name: postgres-service
+    author: intelliqit
+spec:
+  ports:
+    - port: 5432
+      targetPort: 5432
+  selector:
+    name: postgres
+    
+...
+
+Note: Since "type" is not specified in the "spec" section they  will
+be created as clusterIP
+
+
+
+
+vim voting-app-service.yml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: voting-app-service
+  labels:
+    name: voting-app-service
+    author: intelliqit
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+      targetPort: 80
+  selector:
+    name: voting-app
+    
+...
+
+vim result-app-service.yml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: result-app-service
+  labels:
+    name: result-app-service
+    author: intelliqit
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+      targetPort: 80
+  selector:
+    name: result-app
+    
+...
+
+
+The above 2 service objects are created as LoadBalancer type ie
+they can perfrom network load balancing where we can access the pod
+from any slave and also a single public ip will be assigned for all
+the salves
+
+Similary the above pod defintion files can be created as Deployment defintion files
+vim voting-app-deployment.yml
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: voting-app-deployment
+  labels:
+    name: voting-app
+    author: intelliqit
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      name: voting-app
+  template:
+    metadata:
+      name: voting-app-pod
+      labels:
+        name: voting-app
+    spec:
+      containers:
+        - name: voting-app
+          image: dockersamples/examplevotingapp_vote
+          ports:
+            - containerPort: 80
+
+vim result-app-deployment.yml
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: result-app-deployment
+  labels:
+    name: result-app
+    author: intelliqit
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      name: result-app
+  template:
+    metadata:
+      name: result-app-pod
+      labels:
+        name: result-app
+    spec:
+      containers:
+        - name: result-app
+          image: dockersamples/examplevotingapp_result
+          ports:
+            - containerPort: 80
+
+vim redis-app-deployment.yml
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-deployment
+  labels:
+    name: redis
+    author: intelliqit
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      name: redis
+  template:
+    metadata:
+      name: redis-pod
+      labels:
+        name: redis
+    spec:
+      containers:
+        - name: myredis
+          image: redis
+          ports:
+            - containerPort: 6379
+...
+
+vim postgres-deployment.yml
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-deployment
+  labels:
+    name: postgres
+    author: intelliqit
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      name: postgres
+  template:
+    metadata:
+      name: postgres-pod
+      labels:
+        name: postgres
+    spec:
+      containers:
+        - name: mydb
+          image: postgres
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: password
+                  name: postgres-secret
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  key: dbname
+                  name: postgres-secret
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  key: username
+                  name: postgres-secret
+...
+
+
+
+vim worker-app.deployment.yml
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-app-deployment
+  labels:
+    name: worker-app
+    author: intelliqit
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      name: worker-app
+  template:
+    metadata:
+      name: worker-app-pod
+      labels:
+        name: worker-app
+    spec:
+      containers:
+        - name: worker-app
+          image: dockersamples/examplevotingapp_worker
+
+
+
+The above deployment files can be used with the same service defintion files
+
+https://github.com/krishnain/Project.git
+https://github.com/krishnain/8am.git
+
+=====================================================================================
+Secrets
+============
+This is used to send encrypted data to the definiton files
+Generally passwords for Databases can be encrypted using this
+
+Create a secret file to store the mysql password
+vim secret.yml
+---
+apiVersion: v1
+kind: Secret
+metadata:
+ name: mysql-pass
+type: Opaque
+stringData:
+ password: intelliqit
+ username: sai
+...
+
+To deploy the secret
+kubectl create -f secret.yml
+
+Create a pod defintion file to start a mysql pod and pass the environment
+varible using the above secret
+vim pod-defitintion5.yml
+---
+apiVersion: v1
+kind: Pod
+metadata:
+ name: mysql-pod
+ labels:
+  author: intelliqit
+  type: db
+spec:
+ containers:
+  - name: mydb
+    image: mysql:5
+    env:
+     - name: MYSQL_ROOT_PASSWORD
+       valueFrom:
+        secretKeyRef:
+         name: mysql-pass
+         key: password
+...
+
+To create pods from above file
+kubect create -f pod-defintion5.yml
+
+
+============================================================================
+==============================================================================
+Create secrets for postgres password
+vim secret2.yml
+---
+apiVersion: v1
+kind: Secret
+metadata:
+ name: postgres-secrets
+type: Opaque
+stringData:
+ password: intelliqit
+ username: myuser
+ dbname: mydb 
+
+To create a secret from the above file
+kubectl create -f secret2.yml
+
+Create a pod defitnition file that start starts postgres db using the above secrets
+---
+apiVersion: v1
+kind: Pod
+metadata:
+ name: postgres-pod
+ labels:
+  author: intelliqit
+  type: database
+spec:
+ containers:
+  - name: mydb
+    image: postgres
+    env:
+     - name: POSTGRES_PASSWORD
+       valueFrom:
+        secretKeyRef:
+         name: postgres-secrets
+         key: password
+     - name: POSTGRES_USER
+       valueFrom:
+        secretKeyRef:
+         name: postgres-secrets
+         key: username
+     - name: POSTGRES_DB
+       valueFrom:
+        secretKeyRef:
+         name: postgres-secrets
+         key: dbname
+
+
+
+=================================================================================
+Kubernetes on AWS using Kops
+1. Launch Linux EC2 instance in AWS (Kubernetes Client)
+2. Create and attach IAM role to EC2 Instance.
+Kops need permissions to access
+	S3
+	EC2
+	VPC
+	Route53
+	Autoscaling
+	etc..
+3. Install Kops on EC2
+curl -LO https://github.com/kubernetes/kops/releases/download/$(curl -s https://api.github.com/repos/kubernetes/kops/releases/latest | grep tag_name | cut -d '"' -f 4)/kops-linux-amd64
+chmod +x kops-linux-amd64
+sudo mv kops-linux-amd64 /usr/local/bin/kops
+4. Install kubectl
+curl -LO https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl
+chmod +x ./kubectl
+sudo mv ./kubectl /usr/local/bin/kubectl
+5. Create S3 bucket in AWS
+S3 bucket is used by kubernetes to persist cluster state, lets create s3 bucket using aws cli Note: Make sure you choose bucket name that is uniqe accross all aws accounts
+
+aws s3 mb s3://sai.in.k8s --region ap-south-1
+6. Create private hosted zone in AWS Route53
+Head over to aws Route53 and create hostedzone
+Choose name for example (sai.in)
+Choose type as privated hosted zone for VPC
+Select default vpc in the region you are setting up your cluster
+Hit create
+7 Configure environment variables.
+Open .bashrc file
+
+	vi ~/.bashrc
+Add following content into .bashrc, you can choose any arbitary name for cluster and make sure buck name matches the one you created in previous step.
+
+export KOPS_CLUSTER_NAME=sai.in
+export KOPS_STATE_STORE=s3://sai.in.k8s
+Then running command to reflect variables added to .bashrc
+
+	source ~/.bashrc
+8. Create ssh key pair
+This keypair is used for ssh into kubernetes cluster
+
+ssh-keygen
+9. Create a Kubernetes cluster definition.
+kops create cluster \
+--state=${KOPS_STATE_STORE} \
+--node-count=2 \
+--master-size=t3.medium \
+--node-size=t3.medium \
+--zones=ap-south-1a,ap-south-1b \
+--name=${KOPS_CLUSTER_NAME} \
+--dns private \
+--master-count 1
+10. Create kubernetes cluster
+kops update cluster --yes --admin
+Above command may take some time to create the required infrastructure resources on AWS. Execute the validate command to check its status and wait until the cluster becomes ready
+
+kops validate cluster
+For the above above command, you might see validation failed error initially when you create cluster and it is expected behaviour, you have to wait for some more time and check again.
+
+11. To connect to the master
+ssh admin@api.javahome.in
+Destroy the kubernetes cluster
+kops delete cluster  --yes
+Update Nodes and Master in the cluster
+We can change numner of nodes and number of masters using following commands
+
+   kops edit ig nodes change minSize and maxSize to 0
+   kops get ig- to get master node name
+   kops edit ig - change min and max size to 0
+   kops update cluster --yes
+ 
+==============================================================================================
+
+==============================================================================================
+Node affinity
+=================================
+This is a feture of Kubernetes where we can run pods on a specific node
+
+kubectl get nodes --show-labels
+
+kubectl label nodes <your-node-name> slave1=intelliqit1
+
+
+=====================================================================
+vim node-affinity1.yml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: slave1
+            operator: In
+            values:
+            - intelliqit1          
+  containers:
+  - name: nginx
+    image: nginx
+    ports:
+     - containerPort: 80
+       hostPort: 8080
+
+
+
+====================================================================================
+Node affinity using deployment definition file
+vim node-affinity2.yml
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tomcat-deployment
+  labels:
+    type: appserver
+    author: intelliqit
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      type: appserver
+  template:
+    metadata:
+      name: tomcat-pod
+      labels:
+        type: appserver
+    spec:
+      containers:
+        - name: mytomcat
+          image: tomee
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: slave1
+                    operator: In
+                    values:
+                      - intelliqit1
+
+=====================================================================================
+Taints and Tolerations
+========================================
+Taints and Tolerations
+Node affinity, is a property of Pods that attracts them to a set of nodes (either as a preference or a hard requirement). Taints are the opposite -- they allow a node to repel a set of pods.
+
+Tolerations are applied to pods, and allow (but do not require) the pods to schedule onto nodes with matching taints.
+
+Taints and tolerations work together to ensure that pods are not scheduled onto inappropriate nodes. One or more taints are applied to a node; this marks that the node should not accept any pods that do not tolerate the taints.
+
+To create a taint for a node
+kubectl taint nodes node1 node1=intelliqit1:NoSchedule
+
+To delete the taint
+kubectl taint nodes node1 node1=intelliqit1:NoSchedule-
+
+
+Create a pod defintion file to apply toleration for the abpve taint
+vim tolerations1.yml
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: http-pod
+  labels:
+    type: webserver
+    author: intelliqit
+spec:
+  containers:
+    - name: myhtppd
+      image: httpd
+      ports:
+        - containerPort: 80
+          hostPort: 8080
+  tolerations:
+    - key: node3
+      value: intelliqit3
+      effect: NoSchedule
+      operator: Equal
+
+====================================================================================
+Create a deployment file to apply tolerations
+vim tolerations2.yml
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jenkins
+  labels:
+    type: ci-cd
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      type: ci-cd
+  template:
+    metadata:
+      name: jenkins-pod
+      labels:
+        type: ci-cd
+    spec:
+      containers:
+        - name: myjenkins
+          image: jenkins/jenkins
+      tolerations:
+        - key: node2
+          value: intelliqit2
+          effect: NoSchedule
+          operator: Equal
+
+============================================================================================
+Helm
+===========================================================================================
+Helm Chart is a very feature-rich framework when you are working with complex Kubernetes cluster and deployment. Helm chart provides a very convenient way to pass values.yaml and use it inside your Helm Chart
+
+Create your first Helm Chart
+We are going to create our first mynginx Helm Chart using the following command
+
+helm create mynginx
+
+tree mynginx
+
+
+Update the service.type from ClusterIP to NodePort inside the values.yml
+
+To install the chart
+-------------------------------
+helm install <FIRST_ARGUMENT_RELEASE_NAME> <SECOND_ARGUMENT_CHART_NAME>
+
+helm install nginx mynginx
+
+Verify the helm install command
+-----------------------------------
+helm list -a
+
+Get kubernetes Service details and port
+----------------------------------------------
+kubectl get service
+
+To uninstall the nginx helm
+===========================================
+helm uninstall mynginx
+
+=====================================================================================
+Create a helm chart for tomcat to run with 2 replicas and service type as LoadBalancer
+
+1 Create the helm chart
+  helm create mytomcat
+
+2 Go into the chart and edit the required files
+  cd mytomcat
+  vim values.yml
+  Change the repliace count to 2
+  Image name from nginx to tomee
+  ports from 80 to 8080
+  Service type from ClusterIP to LoadBalancer
+
+3 Go into the templates folder and edit the deployment.yml file
+  cd tamplates
+  vim deployment.yml
+  Cahnge port from 80 to 8080
+
+4 Come out of the helm chart and install tomcat using helm
+  cd ..
+  helm install tomcat mytomcat
+
+5 Check the objects created in the cluster
+  kubectl get all
+  We will see 2 pods of tomcat,a replica set,a deployment and a service of the type LoadBalancer
+
+=============================================================================================
+=================================================================================================
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+  labels:
+    app: nginx
+spec:
+  ports:
+    - port: 80
+      name: web
+  clusterIP: None
+  selector:
+    app: nginx
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: web
+spec:
+  serviceName: nginx
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      name: nginx-pod
+      labels:
+        app: nginx
+    spec:
+      containers:
+        - name: nginx
+          image: nginx
+          ports:
+            - containerPort: 80
+              name: web
+          volumeMounts:
+            - name: myvolume
+              mountPath: /usr/share/nginx/html
+  volumeClaimTemplates:
+    - metadata:
+       name: myvolume
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
+
+=========================================================================================
+
+
+
+
